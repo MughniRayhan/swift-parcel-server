@@ -1,9 +1,11 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
 dotenv.config();
+
+const stripe = require('stripe')(process.env.PAYMENT_GATEWAY_KEY);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -30,14 +32,60 @@ async function run() {
 
     const db = client.db("parcelDB");
     const parcelCollection = db.collection("parcels");
-
-    app.get('/parcels', async (req, res) => {
-        const parcels = parcelCollection.find().toArray();
-        res.send(parcels);
-    });
+    const paymentCollection = db.collection("payments")
+  
 
     // Assuming you have already connected MongoDB and have `parcelCollection`
 
+// get api
+app.get('/parcels', async (req, res) => {
+  try {
+    const { email } = req.query;
+
+    const query = email ? { created_by: email } : {};
+    const options = {
+      sort: { creation_date: -1 }, 
+    };
+
+    const parcels = await parcelCollection.find(query, options).toArray();
+    res.send(parcels);
+  } catch (error) {
+    console.error("Error fetching parcels:", error);
+    res.status(500).send({ message: "Failed to get parcels" });
+  }
+});
+
+// GET a single parcel by ID
+app.get("/parcels/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const parcel = await parcelCollection.findOne({ _id: new ObjectId(id) });
+    if (!parcel) {
+      return res.status(404).send({ message: "Parcel not found" });
+    }
+    res.send(parcel);
+  } catch (error) {
+    console.error("Error fetching parcel:", error);
+    res.status(500).send({ message: "Failed to get parcel" });
+  }
+});
+
+
+// DELETE a parcel by ID
+app.delete("/parcels/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const query = { _id: new ObjectId(id) };
+    const result = await parcelCollection.deleteOne(query);
+   res.send(result);
+  } catch (error) {
+    console.error("Error deleting parcel:", error);
+    res.status(500).send({ message: "Internal Server Error" });
+  }
+});
+
+
+// create parcels
 app.post("/parcels", async (req, res) => {
   try {
     const newParcel = req.body;
@@ -53,13 +101,83 @@ app.post("/parcels", async (req, res) => {
   }
 });
 
+//get payments
+app.get("/payments", async (req, res) => {
+  try {
+    const { email } = req.query;
+    const query = email ? { email } : {};
+    const payments = await paymentCollection
+      .find(query)
+      .sort({ date: -1 }) 
+      .toArray();
 
-    // Send a ping to confirm a successful connection
-    // await client.db("admin").command({ ping: 1 });
-    // console.log("Pinged your deployment. You successfully connected to MongoDB!");
+    res.send(payments);
+  } catch (error) {
+    console.error("Error fetching payments:", error);
+    res.status(500).send({ message: "Failed to load payments" });
+  }
+});
+
+
+app.post("/payments", async (req, res) => {
+  try {
+    const payment = req.body;
+    const { parcelId, email, amount, method, transactionId } = payment;
+
+    // Insert payment into `payments` collection
+    const paymentResult = await paymentCollection.insertOne({
+      parcelId: new ObjectId(parcelId),
+      email,
+      amount,
+      transactionId,
+      method: method || "Stripe",
+      date: new Date().toISOString(),
+    });
+
+ 
+
+    // Update parcel's payment_status to "paid"
+    const parcelUpdateResult = await parcelCollection.updateOne(
+      { _id: new ObjectId(parcelId) },
+      { $set: { payment_status: "paid" } }
+    );
+
+    res.status(201).send({
+      success: true,
+      paymentResult,
+      insertedId: paymentResult.insertedId,
+      parcelUpdateResult,
+      message: "Payment recorded and parcel marked as paid.",
+    });
+  } catch (error) {
+    console.error("Error handling payment:", error);
+    res.status(500).send({ message: "Payment processing failed" });
+  }
+});
+
+
+// Stripe payment intent creation
+app.post("/create-payment-intent", async (req, res) => {
+  const { amount } = req.body; 
+  try {
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amount, 
+      currency: "usd",
+      payment_method_types: ["card"],
+    });
+
+    res.send({
+      clientSecret: paymentIntent.client_secret,
+    });
+  } catch (err) {
+    console.error("Error creating payment intent:", err);
+    res.status(500).send({ error: "Payment intent failed" });
+  }
+});
+
+
   } finally {
-    // Ensures that the client will close when you finish/error
-    // await client.close();
+    
   }
 }
 run().catch(console.dir);

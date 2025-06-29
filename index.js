@@ -33,11 +33,27 @@ async function run() {
     const db = client.db("parcelDB");
     const parcelCollection = db.collection("parcels");
     const paymentCollection = db.collection("payments")
-  
+   const usersCollection = db.collection("users");
 
-    // Assuming you have already connected MongoDB and have `parcelCollection`
+// Save new user to DB if not exists
+app.post("/users", async (req, res) => {
+  try {
+    const user = req.body;
+    const existingUser = await usersCollection.findOne({ email: user.email });
 
-// get api
+    if (existingUser) {
+      return res.send({ message: "User already exists", inserted: false });
+    }
+
+    const result = await usersCollection.insertOne(user);
+    res.status(201).send({ message: "User created", inserted: true, result });
+  } catch (error) {
+    console.error("Error saving user:", error);
+    res.status(500).send({ message: "Failed to save user" });
+  }
+});
+
+// get parcels
 app.get('/parcels', async (req, res) => {
   try {
     const { email } = req.query;

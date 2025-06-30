@@ -1,10 +1,14 @@
+const dotenv = require('dotenv');
+dotenv.config();
 const express = require('express');
 const cors = require('cors');
-const dotenv = require('dotenv');
+
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const admin = require("firebase-admin");
+const decoded = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString('utf8')
+const serviceAccount = JSON.parse(decoded);
 
-dotenv.config();
+
 
 const stripe = require('stripe')(process.env.PAYMENT_GATEWAY_KEY);
 
@@ -15,9 +19,6 @@ app.use(cors());
 app.use(express.json());
 
 // firebase admin
-const decoded = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString('utf8')
-const serviceAccount = JSON.parse(decoded);
-
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
 });
@@ -42,7 +43,8 @@ async function run() {
     const db = client.db("parcelDB");
     const parcelCollection = db.collection("parcels");
     const paymentCollection = db.collection("payments")
-   const usersCollection = db.collection("users");
+    const usersCollection = db.collection("users");
+    const ridersCollection = db.collection("riders");
 
 // custom middleware
   const varifyFbToken = async(req,res,next)=>{
@@ -60,7 +62,7 @@ async function run() {
     req.decoded = decodedToken;
     next();
   } catch (error) {
-    res.status(401).send({ message: "Unauthorized access" });
+    res.status(403).send({ message: "Forbidden access" });
   }
   }
 
@@ -223,6 +225,19 @@ app.post("/create-payment-intent", async (req, res) => {
     res.status(500).send({ error: "Payment intent failed" });
   }
 });
+
+//create riders
+app.post("/riders", async (req, res) => {
+  try {
+    const rider = req.body;
+    const result = await ridersCollection.insertOne(rider);
+    res.status(201).send(result);
+  } catch (error) {
+    console.error("Error creating rider application:", error);
+    res.status(500).send({ message: "Failed to create rider application" });
+  }
+});
+
 
 
   } finally {

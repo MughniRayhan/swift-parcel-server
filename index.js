@@ -276,6 +276,39 @@ app.delete('/riders/:id', async (req, res) => {
   }
 });
 
+// Get active riders with optional search by name
+app.get('/riders/active', async (req, res) => {
+  const { name } = req.query;
+  const filter = { status: 'active' };
+  if (name) {
+    filter.name = { $regex: name, $options: 'i' };
+  }
+
+  try {
+    const riders = await ridersCollection.find(filter).toArray();
+    res.send(riders);
+  } catch (error) {
+    console.error("Error fetching active riders:", error);
+    res.status(500).send({ message: "Failed to fetch riders" });
+  }
+});
+
+// Deactivate rider
+app.patch('/riders/:id/deactivate', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await ridersCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { status: 'inactive' } }
+    );
+    res.send(result);
+  } catch (error) {
+    console.error("Error deactivating rider:", error);
+    res.status(500).send({ message: "Failed to deactivate rider" });
+  }
+});
+
+
 
   } finally {
     

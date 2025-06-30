@@ -252,12 +252,20 @@ app.get('/riders/pending', async (req, res) => {
 // Approve rider
 app.patch('/riders/:id/approve', async (req, res) => {
   const { id } = req.params;
+  
   try {
-    const result = await ridersCollection.updateOne(
+    const rider = await ridersCollection.findOne({ _id: new ObjectId(id) });
+    const riderResult = await ridersCollection.updateOne(
       { _id: new ObjectId(id) },
       { $set: { status: 'active' } }
     );
-    res.send(result);
+
+    // update user role
+     const userResult = await usersCollection.updateOne(
+      { email: rider.email },
+      { $set: { role: 'rider' } }
+    );
+    res.send(riderResult);
   } catch (error) {
     console.error("Error approving rider:", error);
     res.status(500).send({ message: "Failed to approve rider" });
@@ -297,9 +305,16 @@ app.get('/riders/active', async (req, res) => {
 app.patch('/riders/:id/deactivate', async (req, res) => {
   const { id } = req.params;
   try {
+    const rider = await ridersCollection.findOne({ _id: new ObjectId(id) });
     const result = await ridersCollection.updateOne(
       { _id: new ObjectId(id) },
       { $set: { status: 'inactive' } }
+    );
+
+     // update user role
+     const userResult = await usersCollection.updateOne(
+      { email: rider.email },
+      { $set: { role: 'user' } }
     );
     res.send(result);
   } catch (error) {

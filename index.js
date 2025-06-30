@@ -238,6 +238,43 @@ app.post("/riders", async (req, res) => {
   }
 });
 
+// GET all riders with pending status
+app.get('/riders/pending', async (req, res) => {
+  try {
+    const pendingRiders = await ridersCollection.find({ status: 'pending' }).toArray();
+    res.send(pendingRiders);
+  } catch (error) {
+    console.error("Error fetching pending riders:", error);
+    res.status(500).send({ message: "Failed to load pending riders" });
+  }
+});
+
+// Approve rider
+app.patch('/riders/:id/approve', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await ridersCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { status: 'active' } }
+    );
+    res.send(result);
+  } catch (error) {
+    console.error("Error approving rider:", error);
+    res.status(500).send({ message: "Failed to approve rider" });
+  }
+});
+
+// Delete (reject) rider
+app.delete('/riders/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await ridersCollection.deleteOne({ _id: new ObjectId(id) });
+    res.send(result);
+  } catch (error) {
+    console.error("Error deleting rider:", error);
+    res.status(500).send({ message: "Failed to delete rider" });
+  }
+});
 
 
   } finally {

@@ -66,6 +66,26 @@ async function run() {
   }
   }
 
+  // search users
+  app.get('/users/search', async (req, res) => {
+   const email = req.query.email;
+  if (!email) {
+    return res.status(400).send({ message: "Email query parameter is required" });
+  }
+  try {
+    const user = await usersCollection
+    .find({ email: { $regex: email, $options: "i" } })
+    .project({ displayName: 1, email: 1, role: 1 }) 
+    .toArray();
+   
+    res.send(user);
+  } catch (error) {
+    console.error("Error searching user:", error);
+    res.status(500).send({ message: "Server error" });
+  }
+});
+
+
 // Save new user to DB if not exists
 app.post("/users", async (req, res) => {
   try {
@@ -83,6 +103,37 @@ app.post("/users", async (req, res) => {
     res.status(500).send({ message: "Failed to save user" });
   }
 });
+
+// make admin
+app.patch('/users/admin/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await usersCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { role: 'admin' } }
+    );
+    res.send(result);
+  } catch (error) {
+    console.error('Error making admin:', error);
+    res.status(500).send({ message: 'Failed to make admin' });
+  }
+});
+
+// remove admin
+app.patch('/users/remove-admin/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await usersCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { role: 'user' } }
+    );
+    res.send(result);
+  } catch (error) {
+    console.error('Error removing admin:', error);
+    res.status(500).send({ message: 'Failed to remove admin' });
+  }
+});
+
 
 // get parcels
 app.get('/parcels', async (req, res) => {

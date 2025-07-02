@@ -66,8 +66,26 @@ async function run() {
   }
   }
 
+// varify admin role
+  const verifyAdmin = async (req, res, next) => {
+  const email = req.decoded.email;
+  if (!email) return res.status(401).send({ message: "Unauthorized" });
+
+  try {
+    const user = await usersCollection.findOne({ email });
+    if(!user || user.role !== 'admin'){
+      return res.status(403).send({message: "Forbidden accesss"})
+    }
+    next();
+  } catch (error) {
+    console.error("Error fetching user role:", error);
+    res.status(500).send({ message: "Failed to fetch user role" });
+  }
+};
+
+
   // search users
-  app.get('/users/search', async (req, res) => {
+  app.get('/users/search', varifyFbToken, verifyAdmin, async (req, res) => {
    const email = req.query.email;
   if (!email) {
     return res.status(400).send({ message: "Email query parameter is required" });
@@ -82,6 +100,31 @@ async function run() {
   } catch (error) {
     console.error("Error searching user:", error);
     res.status(500).send({ message: "Server error" });
+  }
+});
+
+
+// GET user role by email 
+app.get('/users/role/:email', async (req, res) => {
+  try {
+    const { email } = req.params;
+
+    if (!email) {
+      return res.status(400).send({ message: "Email parameter is required" });
+    }
+
+    const user = await usersCollection.findOne(
+      { email }
+    );
+
+    if (!user) {
+      return res.status(404).send({ message: "User not found" });
+    }
+
+    res.send({ role: user.role || "user" }); // default to 'user' if no role assigned
+  } catch (error) {
+    console.error("Error fetching user role:", error);
+    res.status(500).send({ message: "Failed to get user role" });
   }
 });
 
@@ -105,7 +148,7 @@ app.post("/users", async (req, res) => {
 });
 
 // make admin
-app.patch('/users/admin/:id', async (req, res) => {
+app.patch('/users/admin/:id', varifyFbToken, verifyAdmin, async (req, res) => {
   const { id } = req.params;
   try {
     const result = await usersCollection.updateOne(
@@ -120,7 +163,7 @@ app.patch('/users/admin/:id', async (req, res) => {
 });
 
 // remove admin
-app.patch('/users/remove-admin/:id', async (req, res) => {
+app.patch('/users/remove-admin/:id', varifyFbToken, verifyAdmin, async (req, res) => {
   const { id } = req.params;
   try {
     const result = await usersCollection.updateOne(
@@ -136,7 +179,7 @@ app.patch('/users/remove-admin/:id', async (req, res) => {
 
 
 // get parcels
-app.get('/parcels', async (req, res) => {
+app.get('/parcels', varifyFbToken, async (req, res) => {
   try {
     const { email } = req.query;
 
@@ -154,7 +197,7 @@ app.get('/parcels', async (req, res) => {
 });
 
 // GET a single parcel by ID
-app.get("/parcels/:id", async (req, res) => {
+app.get("/parcels/:id", varifyFbToken, async (req, res) => {
   try {
     const { id } = req.params;
     const parcel = await parcelCollection.findOne({ _id: new ObjectId(id) });
@@ -290,7 +333,7 @@ app.post("/riders", async (req, res) => {
 });
 
 // GET all riders with pending status
-app.get('/riders/pending', async (req, res) => {
+app.get('/riders/pending', varifyFbToken, verifyAdmin, async (req, res) => {
   try {
     const pendingRiders = await ridersCollection.find({ status: 'pending' }).toArray();
     res.send(pendingRiders);
@@ -301,7 +344,7 @@ app.get('/riders/pending', async (req, res) => {
 });
 
 // Approve rider
-app.patch('/riders/:id/approve', async (req, res) => {
+app.patch('/riders/:id/approve', varifyFbToken, verifyAdmin, async (req, res) => {
   const { id } = req.params;
   
   try {
@@ -324,7 +367,7 @@ app.patch('/riders/:id/approve', async (req, res) => {
 });
 
 // Delete (reject) rider
-app.delete('/riders/:id', async (req, res) => {
+app.delete('/riders/:id', varifyFbToken, verifyAdmin, async (req, res) => {
   const { id } = req.params;
   try {
     const result = await ridersCollection.deleteOne({ _id: new ObjectId(id) });
@@ -336,7 +379,7 @@ app.delete('/riders/:id', async (req, res) => {
 });
 
 // Get active riders with optional search by name
-app.get('/riders/active', async (req, res) => {
+app.get('/riders/active', varifyFbToken, verifyAdmin,  async (req, res) => {
   const { name } = req.query;
   const filter = { status: 'active' };
   if (name) {
@@ -353,7 +396,7 @@ app.get('/riders/active', async (req, res) => {
 });
 
 // Deactivate rider
-app.patch('/riders/:id/deactivate', async (req, res) => {
+app.patch('/riders/:id/deactivate',varifyFbToken, verifyAdmin, async (req, res) => {
   const { id } = req.params;
   try {
     const rider = await ridersCollection.findOne({ _id: new ObjectId(id) });

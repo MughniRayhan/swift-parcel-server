@@ -196,6 +196,23 @@ app.get('/parcels', varifyFbToken, async (req, res) => {
   }
 });
 
+
+// GET parcels with payment_status "paid" and delivery_status "pending"
+app.get('/parcels/assignable', varifyFbToken, verifyAdmin, async (req, res) => {
+  try {
+    const parcels = await parcelCollection.find({
+      payment_status: "paid",
+      delivery_status: "pending"
+    }).toArray();
+
+    res.send(parcels);
+  } catch (error) {
+    console.error("Error fetching assignable parcels:", error);
+    res.status(500).send({ message: "Failed to fetch parcels" });
+  }
+});
+
+
 // GET a single parcel by ID
 app.get("/parcels/:id", varifyFbToken, async (req, res) => {
   try {
@@ -343,6 +360,24 @@ app.get('/riders/pending', varifyFbToken, verifyAdmin, async (req, res) => {
   }
 });
 
+// Get active riders by district
+app.get('/riders/by-district/:district', varifyFbToken, verifyAdmin, async (req, res) => {
+  const { district } = req.params;
+
+  try {
+    const riders = await ridersCollection.find({
+      status: 'active',
+      district: district
+    }).toArray();
+
+    res.send(riders);
+  } catch (error) {
+    console.error("Error fetching riders by district:", error);
+    res.status(500).send({ message: "Failed to fetch riders" });
+  }
+});
+
+
 // Approve rider
 app.patch('/riders/:id/approve', varifyFbToken, verifyAdmin, async (req, res) => {
   const { id } = req.params;
@@ -363,6 +398,39 @@ app.patch('/riders/:id/approve', varifyFbToken, verifyAdmin, async (req, res) =>
   } catch (error) {
     console.error("Error approving rider:", error);
     res.status(500).send({ message: "Failed to approve rider" });
+  }
+});
+
+
+// Assign rider to parcel and update rider's work_status
+app.patch('/parcels/:id/assign-rider', varifyFbToken, verifyAdmin, async (req, res) => {
+  const { id } = req.params;
+  const { riderId, riderName, riderEmail } = req.body;
+
+  try {
+    // Update parcel with assigned rider info
+    const parcelResult = await parcelCollection.updateOne(
+      { _id: new ObjectId(id) },
+      {
+        $set: {
+          assigned_rider_id: riderId,
+          assigned_rider_name: riderName,
+          assigned_rider_email: riderEmail,
+          delivery_status: 'assigned'
+        }
+      }
+    );
+
+    // Update rider work_status to in_delivery
+    const riderResult = await ridersCollection.updateOne(
+      { _id: new ObjectId(riderId) },
+      { $set: { work_status: "in_delivery" } }
+    );
+
+    res.send({ parcelResult, riderResult });
+  } catch (error) {
+    console.error("Error assigning rider:", error);
+    res.status(500).send({ message: "Failed to assign rider" });
   }
 });
 

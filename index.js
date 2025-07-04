@@ -83,6 +83,23 @@ async function run() {
   }
 };
 
+// varify rider role
+  const verifyRider = async (req, res, next) => {
+  const email = req.decoded.email;
+  if (!email) return res.status(401).send({ message: "Unauthorized" });
+
+  try {
+    const user = await usersCollection.findOne({ email });
+    if(!user || user.role !== 'rider'){
+      return res.status(403).send({message: "Forbidden accesss"})
+    }
+    next();
+  } catch (error) {
+    console.error("Error fetching user role:", error);
+    res.status(500).send({ message: "Failed to fetch user role" });
+  }
+};
+
 
   // search users
   app.get('/users/search', varifyFbToken, verifyAdmin, async (req, res) => {
@@ -229,6 +246,55 @@ app.get("/parcels/:id", varifyFbToken, async (req, res) => {
 });
 
 
+// Update parcel delivery status with times
+app.patch('/parcels/:id/update-status', varifyFbToken, async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+
+  try {
+    const updateFields = { delivery_status: status };
+
+    if (status === "in_transit") {
+      updateFields.picked_time = new Date().toISOString();
+    }
+
+    if (status === "delivered") {
+      updateFields.delivered_time = new Date().toISOString();
+    }
+
+    const result = await parcelCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: updateFields }
+    );
+
+    res.send(result);
+  } catch (error) {
+    console.error("Error updating parcel status:", error);
+    res.status(500).send({ message: "Failed to update status" });
+  }
+});
+
+
+// Cash out a single parcel
+app.patch('/parcels/:id/cashout', varifyFbToken, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await parcelCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { cashout_status: "cashed_out" } }
+    );
+
+    res.send({ success: true, result });
+  } catch (error) {
+    console.log("Cashout error:", error);
+    res.status(500).send({ message: "Cashout failed" });
+  }
+});
+
+
+
+
 // DELETE a parcel by ID
 app.delete("/parcels/:id", async (req, res) => {
   try {
@@ -350,7 +416,7 @@ app.post("/riders", async (req, res) => {
 });
 
 // Get pending delivery parcels for a rider
-app.get('/riders/:email/pending-tasks', varifyFbToken, async (req, res) => {
+app.get('/riders/:email/pending-tasks', varifyFbToken, verifyRider, async (req, res) => {
   const { email } = req.params;
 
   try {
@@ -366,6 +432,26 @@ app.get('/riders/:email/pending-tasks', varifyFbToken, async (req, res) => {
   }
 });
 
+// Get completed deliveries for a rider
+app.get('/riders/:email/completed-tasks', varifyFbToken, verifyRider, async (req, res) => {
+  const { email } = req.params;
+
+  const options = {
+    sort: { creation_date: -1 }
+  }
+
+  try {
+    const completedParcels = await parcelCollection.find({
+      assigned_rider_email: email,
+      delivery_status: { $in: ["delivered", "service_center_delivered"] }
+    }, options).toArray();
+
+    res.send(completedParcels);
+  } catch (error) {
+    console.error("Error fetching rider completed deliveries:", error);
+    res.status(500).send({ message: "Failed to fetch rider completed deliveries" });
+  }
+});
 
 
 // GET all riders with pending status

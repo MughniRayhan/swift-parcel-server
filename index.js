@@ -45,6 +45,7 @@ async function run() {
     const paymentCollection = db.collection("payments")
     const usersCollection = db.collection("users");
     const ridersCollection = db.collection("riders");
+    const trackingCollection = db.collection("tracking")
 
 // custom middleware
   const varifyFbToken = async(req,res,next)=>{
@@ -251,7 +252,14 @@ app.patch('/parcels/:id/update-status', varifyFbToken, verifyRider, async (req, 
   const { id } = req.params;
   const { status } = req.body;
 
+  console.log("PATCH /parcels/:id/update-status called with:", { id, status });
+
   try {
+    if (!ObjectId.isValid(id)) {
+      console.log("Invalid ObjectId:", id);
+      return res.status(400).send({ message: "Invalid parcel id" });
+    }
+
     const updateData = { delivery_status: status };
 
     if (status === 'in_transit') {
@@ -261,18 +269,23 @@ app.patch('/parcels/:id/update-status', varifyFbToken, verifyRider, async (req, 
     if (status === 'delivered') {
       updateData.delivered_time = new Date().toISOString();
     }
-console.log("Updating parcel", id, "with", updateData, );
+
+    console.log("Updating parcel", id, "with", updateData);
+
     const result = await parcelCollection.updateOne(
       { _id: new ObjectId(id) },
       { $set: updateData }
     );
 
+    console.log("Update result:", result);
+
     res.send(result);
   } catch (error) {
     console.error("Error updating parcel status:", error);
-    res.status(500).send({ message: "Failed to update status" });
+    res.status(500).send({ message: "Failed to update status", error: error.message });
   }
 });
+
 
 
 
@@ -403,6 +416,50 @@ app.post("/create-payment-intent", async (req, res) => {
     res.status(500).send({ error: "Payment intent failed" });
   }
 });
+
+// GET /tracking/:tracking_id - Get tracking history for a parcel
+app.get('/tracking/:tracking_id', async (req, res) => {
+  const { tracking_id } = req.params;
+
+  try {
+    const trackingCollection = client.db("parcelDB").collection("tracking");
+
+    const trackingHistory = await trackingCollection
+      .find({ tracking_id })
+      .sort({ timestamp: 1 })
+      .toArray();
+
+    res.send(trackingHistory);
+  } catch (error) {
+    console.error("Error fetching tracking history:", error);
+    res.status(500).send({ message: "Failed to fetch tracking history" });
+  }
+});
+
+// POST /tracking - Add tracking event
+app.post('/tracking', async (req, res) => {
+  const { tracking_id, event, remarks } = req.body;
+
+  if (!tracking_id || !event) {
+    return res.status(400).send({ message: "tracking_id and event are required" });
+  }
+
+  try {
+    const trackingData = {
+      tracking_id,
+      event,
+      timestamp: new Date(),
+      remarks: remarks || "",
+    };
+
+    const result = await trackingCollection.insertOne(trackingData);
+    res.status(201).send({ success: true, result });
+  } catch (error) {
+    console.error("Error adding tracking event:", error);
+    res.status(500).send({ message: "Failed to add tracking event" });
+  }
+});
+
 
 //create riders
 app.post("/riders", async (req, res) => {

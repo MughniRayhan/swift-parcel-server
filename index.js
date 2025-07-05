@@ -247,24 +247,24 @@ app.get("/parcels/:id", varifyFbToken, async (req, res) => {
 
 
 // Update parcel delivery status with times
-app.patch('/parcels/:id/update-status', varifyFbToken, async (req, res) => {
+app.patch('/parcels/:id/update-status', varifyFbToken, verifyRider, async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
 
   try {
-    const updateFields = { delivery_status: status };
+    const updateData = { delivery_status: status };
 
-    if (status === "in_transit") {
-      updateFields.picked_time = new Date().toISOString();
+    if (status === 'in_transit') {
+      updateData.picked_time = new Date().toISOString();
     }
 
-    if (status === "delivered") {
-      updateFields.delivered_time = new Date().toISOString();
+    if (status === 'delivered') {
+      updateData.delivered_time = new Date().toISOString();
     }
-
+console.log("Updating parcel", id, "with", updateData, );
     const result = await parcelCollection.updateOne(
       { _id: new ObjectId(id) },
-      { $set: updateFields }
+      { $set: updateData }
     );
 
     res.send(result);
@@ -273,6 +273,7 @@ app.patch('/parcels/:id/update-status', varifyFbToken, async (req, res) => {
     res.status(500).send({ message: "Failed to update status" });
   }
 });
+
 
 
 // Cash out a single parcel
@@ -539,23 +540,6 @@ app.patch('/parcels/:id/assign-rider', varifyFbToken, verifyAdmin, async (req, r
   }
 });
 
-// Update parcel delivery status
-app.patch('/parcels/:id/update-status', varifyFbToken, async (req, res) => {
-  const { id } = req.params;
-  const { status } = req.body;
-
-  try {
-    const result = await parcelCollection.updateOne(
-      { _id: new ObjectId(id) },
-      { $set: { delivery_status: status } }
-    );
-
-    res.send(result);
-  } catch (error) {
-    console.error("Error updating parcel status:", error);
-    res.status(500).send({ message: "Failed to update status" });
-  }
-});
 
 
 // Delete (reject) rider

@@ -417,24 +417,45 @@ app.post("/create-payment-intent", async (req, res) => {
   }
 });
 
-// GET /tracking/:tracking_id - Get tracking history for a parcel
-app.get('/tracking/:tracking_id', async (req, res) => {
-  const { tracking_id } = req.params;
+app.get("/tracking/user/:email", varifyFbToken, async (req, res) => {
+  const { email } = req.params;
 
   try {
-    const trackingCollection = client.db("parcelDB").collection("tracking");
+    const result = await trackingCollection.aggregate([
+      {
+        $lookup: {
+          from: "parcels",
+          localField: "tracking_id",
+          foreignField: "tracking_id",
+          as: "parcelInfo"
+        }
+      },
+      { $unwind: "$parcelInfo" },
+      {
+        $match: {
+          "parcelInfo.created_by": email 
+        }
+      },
+      {
+        $project: {
+          tracking_id: 1,
+          event: 1,
+          remarks: 1,
+          timestamp: 1,
+          parcel_name: "$parcelInfo.title" 
+        }
+      },
+      { $sort: { timestamp: -1 } } 
+    ]).toArray();
 
-    const trackingHistory = await trackingCollection
-      .find({ tracking_id })
-      .sort({ timestamp: 1 })
-      .toArray();
-
-    res.send(trackingHistory);
+    res.send(result);
   } catch (error) {
-    console.error("Error fetching tracking history:", error);
-    res.status(500).send({ message: "Failed to fetch tracking history" });
+    console.error("Error fetching user tracking:", error);
+    res.status(500).send({ message: "Failed to load tracking data" });
   }
 });
+
+
 
 // POST /tracking - Add tracking event
 app.post('/tracking', async (req, res) => {

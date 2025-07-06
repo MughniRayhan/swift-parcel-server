@@ -481,6 +481,74 @@ app.post('/tracking', async (req, res) => {
   }
 });
 
+// admin dashboard
+app.get('/admin/dashboard-stats',varifyFbToken, verifyAdmin, async (req, res) => {
+  try {
+    // Aggregate parcel counts by delivery_status
+    const parcelStatusCounts = await parcelCollection.aggregate([
+      {
+        $group: {
+          _id: "$delivery_status",
+          count: { $sum: 1 }
+        }
+      }
+    ]).toArray();
+
+    // Format counts
+    const deliveredParcels = parcelStatusCounts.find(s => s._id === 'delivered')?.count || 0;
+    const pendingParcels = parcelStatusCounts.find(s => s._id !== 'delivered')?.count || 0;
+
+    // Total parcels count 
+    const totalParcels = await parcelCollection.estimatedDocumentCount();
+
+    // Total users count
+    const totalUsers = await usersCollection.estimatedDocumentCount();
+
+    // Total riders count
+    const totalRiders = await ridersCollection.estimatedDocumentCount();
+
+    // Total earnings aggregation
+    const totalEarningsData = await paymentCollection.aggregate([
+      {
+        $group: {
+          _id: null,
+          total: { $sum: "$amount" }
+        }
+      }
+    ]).toArray();
+
+    const totalEarnings = totalEarningsData[0]?.total || 0;
+
+    // Recent parcels (limit 5)
+    const recentParcels = await parcelCollection
+      .find()
+      .sort({ creation_date: -1 })
+      .limit(5)
+      .toArray();
+
+    // Recent payments (limit 5)
+    const recentPayments = await paymentCollection
+      .find()
+      .sort({ date: -1 })
+      .limit(5)
+      .toArray();
+
+    res.send({
+      totalParcels,
+      deliveredParcels,
+      pendingParcels,
+      totalUsers,
+      totalRiders,
+      totalEarnings,
+      recentParcels,
+      recentPayments,
+    });
+  } catch (error) {
+    console.error('Dashboard stats error:', error);
+    res.status(500).send({ message: 'Failed to fetch dashboard stats' });
+  }
+});
+
 
 //create riders
 app.post("/riders", async (req, res) => {
@@ -561,6 +629,66 @@ app.get('/riders/by-district/:district', varifyFbToken, verifyAdmin, async (req,
   }
 });
 
+// rider dashboard
+// Rider Dashboard Route
+
+app.get('/rider/dashboard-stats/:email', varifyFbToken, verifyRider, async (req, res) => {
+  const { email } = req.params;
+
+  try {
+    const totalDeliveries = await parcelCollection.countDocuments({ assigned_rider_email: email });
+
+    const deliveredParcels = await parcelCollection.countDocuments({
+      assigned_rider_email: email,
+      delivery_status: "delivered",
+    });
+
+    const pendingParcels = await parcelCollection.countDocuments({
+      assigned_rider_email: email,
+      delivery_status: { $ne: "delivered" },
+    });
+
+    const completedTasks = await parcelCollection.find({
+      assigned_rider_email: email,
+      delivery_status: "delivered",
+    }).sort({ delivered_time: -1 }).limit(5).toArray();
+
+    const earningsCursor = await parcelCollection.aggregate([
+      {
+        $match: {
+          assigned_rider_email: email,
+          delivery_status: "delivered",
+        },
+      },
+      {
+        $project: {
+          earning: {
+            $cond: [
+              { $eq: ["$sender_region", "$receiver_region"] },
+              { $multiply: ["$cost", 0.3] },
+              { $multiply: ["$cost", 0.5] },
+            ],
+          },
+          delivered_time: 1,
+        },
+      },
+    ]).toArray();
+
+    const totalEarnings = earningsCursor.reduce((sum, p) => sum + p.earning, 0);
+
+    res.send({
+      totalDeliveries,
+      deliveredParcels,
+      pendingParcels,
+      totalEarnings,
+      recentDeliveries: completedTasks,
+    });
+
+  } catch (error) {
+    console.error("Error fetching rider dashboard stats:", error);
+    res.status(500).send({ message: "Failed to load dashboard stats" });
+  }
+});
 
 // Approve rider
 app.patch('/riders/:id/approve', varifyFbToken, verifyAdmin, async (req, res) => {

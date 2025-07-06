@@ -146,6 +146,38 @@ app.get('/users/role/:email', async (req, res) => {
   }
 });
 
+// User Dashboard 
+app.get('/user/dashboard-stats/:email', varifyFbToken, async (req, res) => {
+  const { email } = req.params;
+
+  try {
+    const totalParcels = await parcelCollection.countDocuments({ created_by: email });
+    const deliveredParcels = await parcelCollection.countDocuments({
+      created_by: email,
+      delivery_status: 'delivered',
+    });
+    const pendingParcels = await parcelCollection.countDocuments({
+      created_by: email,
+      delivery_status: { $ne: 'delivered' },
+    });
+
+    const recentParcels = await parcelCollection
+      .find({ created_by: email })
+      .sort({ creation_date: -1 })
+      .limit(5)
+      .toArray();
+
+    res.send({
+      totalParcels,
+      deliveredParcels,
+      pendingParcels,
+      recentParcels,
+    });
+  } catch (error) {
+    console.error("Error fetching user dashboard stats:", error);
+    res.status(500).send({ message: "Server error fetching stats" });
+  }
+});
 
 // Save new user to DB if not exists
 app.post("/users", async (req, res) => {
@@ -630,8 +662,6 @@ app.get('/riders/by-district/:district', varifyFbToken, verifyAdmin, async (req,
 });
 
 // rider dashboard
-// Rider Dashboard Route
-
 app.get('/rider/dashboard-stats/:email', varifyFbToken, verifyRider, async (req, res) => {
   const { email } = req.params;
 
